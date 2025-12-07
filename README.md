@@ -63,7 +63,7 @@ For more details on Claude Code limits, see the [official documentation](https:/
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/ajanderson/ccc.git
+   git clone https://github.com/ajanderson1/ccc.git
    cd ccc
    ```
 
