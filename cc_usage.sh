@@ -7,8 +7,8 @@
 zmodload zsh/datetime
 START_TIME=$EPOCHREALTIME
 
-LOG_FILE=$(mktemp -t claude_usage_raw)
-DRIVER=$(mktemp -t claude_driver)
+LOG_FILE=$(mktemp -t claude_usage_raw.XXXXXX)
+DRIVER=$(mktemp -t claude_driver.XXXXXX)
 
 function cleanup {
     [[ -f "$DRIVER" ]] && rm "$DRIVER"
