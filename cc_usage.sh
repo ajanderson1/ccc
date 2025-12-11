@@ -84,6 +84,7 @@ def strip_ansi(text):
 
 def clean_date_string(text):
     text = re.sub(r'\s*\(.*?\)', '', text) # Remove (Europe/Stockholm)
+    text = re.sub(r',\s*', ' at ', text)   # Normalize "Dec 15, 9pm" to "Dec 15 at 9pm"
     text = re.sub(r'\s+', ' ', text)       # Collapse spaces
     text = ''.join(c for c in text if c.isprintable())
     return text.strip()
