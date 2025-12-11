@@ -47,7 +47,11 @@ expect eof
 EOF
 
 # --- 4. EXECUTE ---
-script -qF "$LOG_FILE" expect "$DRIVER" > /dev/null 2>&1
+if [[ "$(uname)" == "Darwin" ]]; then
+    script -qF "$LOG_FILE" expect "$DRIVER" > /dev/null 2>&1
+else
+    script -q -c "expect \"$DRIVER\"" "$LOG_FILE" > /dev/null 2>&1
+fi
 
 if [[ ! -s "$LOG_FILE" ]]; then
     echo "Error: No output captured."
