@@ -87,6 +87,8 @@ def clean_date_string(text):
     text = text.replace(',', '')           # Remove commas
     text = re.sub(r'\s+', ' ', text)       # Collapse spaces
     text = ''.join(c for c in text if c.isprintable())
+    # Normalize am/pm to uppercase for consistent %p parsing
+    text = re.sub(r'(?i)(am|pm)$', lambda m: m.group(1).upper(), text)
     return text.strip()
 
 def parse_reset_time(time_str):
