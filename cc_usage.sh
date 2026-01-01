@@ -84,7 +84,7 @@ def strip_ansi(text):
 
 def clean_date_string(text):
     text = re.sub(r'\s*\(.*?\)', '', text) # Remove (Europe/Stockholm)
-    text = re.sub(r',\s*', ' at ', text)   # Normalize "Dec 15, 9pm" to "Dec 15 at 9pm"
+    text = text.replace(',', '')           # Remove commas
     text = re.sub(r'\s+', ' ', text)       # Collapse spaces
     text = ''.join(c for c in text if c.isprintable())
     return text.strip()
@@ -96,9 +96,13 @@ def parse_reset_time(time_str):
     dt = None
 
     # Formats containing a specific Date
-    formats_date = [
-        '%b %d at %I:%M%p %Y', # Dec 8 at 4:30pm 2025
-        '%b %d at %I%p %Y'     # Dec 8 at 4pm 2025
+    formats_date_with_year = [
+        '%b %d %Y at %I:%M%p', # Jan 2 2026 at 9:59pm
+        '%b %d %Y at %I%p'     # Jan 2 2026 at 9pm
+    ]
+    formats_date_no_year = [
+        '%b %d at %I:%M%p',    # Dec 8 at 4:30pm
+        '%b %d at %I%p'        # Dec 8 at 4pm
     ]
     
     # Formats containing only Time (The Problem Makers)
@@ -109,18 +113,27 @@ def parse_reset_time(time_str):
 
     # 1. Try formats with explicit Dates first
     if 'at' in clean:
-        clean_with_year = f"{clean} {now.year}"
-        for fmt in formats_date:
+        # First try formats that already have year embedded
+        for fmt in formats_date_with_year:
             try:
-                dt = datetime.datetime.strptime(clean_with_year, fmt)
-                # Year Wrap Logic: If date is way in past, it's next year
-                if dt < now - timedelta(days=300): 
-                    dt = dt.replace(year=now.year + 1)
-                elif dt > now + timedelta(days=300): 
-                    dt = dt.replace(year=now.year - 1)
+                dt = datetime.datetime.strptime(clean, fmt)
                 break
             except ValueError:
                 continue
+
+        # Then try formats without year (append current year)
+        if dt is None:
+            for fmt in formats_date_no_year:
+                try:
+                    dt = datetime.datetime.strptime(f"{clean} {now.year}", f"{fmt} %Y")
+                    # Year Wrap Logic: If date is way in past, it's next year
+                    if dt < now - timedelta(days=300):
+                        dt = dt.replace(year=now.year + 1)
+                    elif dt > now + timedelta(days=300):
+                        dt = dt.replace(year=now.year - 1)
+                    break
+                except ValueError:
+                    continue
 
     # 2. Try Time-Only formats
     else:
@@ -193,9 +206,12 @@ try:
             c = RED if used > elapsed_pct else GREEN
             print(f"  Usage:  {c}{create_bar(used)}{RESET}  {used}% used")
             
-            pace_int = int(pace)
-            p_str = f"{abs(pace_int)}pp"
-            msg = f"Above pace ({p_str})" if pace > 0 else f"Below pace ({p_str})"
+            pace_int = round(pace)
+            if pace_int == 0:
+                msg = "On pace"
+            else:
+                p_str = f"{abs(pace_int)}pp"
+                msg = f"Above pace ({p_str})" if pace_int > 0 else f"Below pace ({p_str})"
             
             days = remain.days
             hours = remain.seconds // 3600
