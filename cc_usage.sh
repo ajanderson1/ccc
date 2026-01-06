@@ -37,10 +37,10 @@ set timeout 10
 spawn $TARGET_CMD /usage
 stty rows 50 cols 160
 
-# Wait for the specific sections to appear
+# Wait for all sections to render (Sonnet only appears last)
 expect "Current week"
-expect "Resets"
-sleep 0.2
+expect "Sonnet only"
+sleep 0.3
 
 send "\033"
 expect eof

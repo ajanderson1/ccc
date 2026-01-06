@@ -143,9 +143,12 @@ Ensure Claude Code is installed and in your PATH. See [installation docs](https:
 
 ### "Error: Data incomplete" or "Date error"
 The regex patterns may not match the current output format. This could happen if:
+- **Timing issue** - The expect script exited before all usage sections rendered. The script waits for "Sonnet only" (the last section) before capturing; if this text changes or renders slowly, capture may be incomplete.
 - Your locale uses different date formatting
 - Anthropic has updated the `/usage` output format
 - The timezone display format has changed
+
+If you see intermittent "Data incomplete" errors, try increasing the `sleep` value in the expect driver section of the script (around line 43).
 
 ## Contributing
 
