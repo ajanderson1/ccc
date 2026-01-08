@@ -98,6 +98,18 @@ The script will:
 3. Parse and analyze the usage data
 4. Display a visual pace-aware breakdown
 
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DEBUG` | `0` | Set to `1` to enable debug output and preserve log files |
+| `MAX_RETRIES` | `3` | Number of retry attempts if output capture fails |
+
+Example with debug mode:
+```bash
+DEBUG=1 ./cc_usage.sh
+```
+
 ## How It Works
 
 This tool is admittedly a "hack" - it works around the lack of a programmatic API for usage data:
@@ -136,19 +148,20 @@ Install expect: `brew install expect` (macOS) or `apt install expect` (Linux)
 ### "Error: 'claude' or 'cc' binary not found"
 Ensure Claude Code is installed and in your PATH. See [installation docs](https://docs.claude.com/en/code/).
 
-### "Error: No output captured"
+### "Error: No output captured after X attempts"
 - Check that Claude Code is working: run `claude /usage` manually
-- Increase the timeout in the expect script if you have a slow connection
 - Ensure you're authenticated with Claude Code
+- Try increasing retries: `MAX_RETRIES=5 ./cc_usage.sh`
+- Enable debug mode to see what's happening: `DEBUG=1 ./cc_usage.sh`
 
 ### "Error: Data incomplete" or "Date error"
-The regex patterns may not match the current output format. This could happen if:
-- **Timing issue** - The expect script exited before all usage sections rendered. The script waits for "Sonnet only" (the last section) before capturing; if this text changes or renders slowly, capture may be incomplete.
+The error now shows diagnostic information including which data is missing and a preview of what was captured. This could happen if:
+- **Timing issue** - The output didn't render completely. The script retries automatically up to `MAX_RETRIES` times.
 - Your locale uses different date formatting
 - Anthropic has updated the `/usage` output format
 - The timezone display format has changed
 
-If you see intermittent "Data incomplete" errors, try increasing the `sleep` value in the expect driver section of the script (around line 43).
+Use debug mode to investigate: `DEBUG=1 ./cc_usage.sh` - this will show retry attempts and preserve the log file for inspection.
 
 ## Contributing
 
