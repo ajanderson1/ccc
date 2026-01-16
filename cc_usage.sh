@@ -48,6 +48,9 @@ set env(COLUMNS) 160
 
 spawn $TARGET_CMD /usage
 
+# Capture the spawned PID for cleanup
+set pid [exp_pid]
+
 # Handle trust dialog if it appears, then wait for usage content
 expect {
     "Yes, proceed" {
@@ -56,8 +59,8 @@ expect {
         send "\r"
         exp_continue
     }
-    "Current week" {
-        # Usage content starting to appear - wait for full render
+    "% used" {
+        # Actual data loaded - wait for full render
         sleep 1.5
     }
     timeout {
@@ -65,14 +68,23 @@ expect {
     }
 }
 
-send "\033"
-expect eof
+# Stop logging before cleanup
 log_file
+
+# Forcefully terminate - ESC alone is unreliable
+catch {close}
+catch {exec kill -9 \$pid}
+
+# Wait briefly for process cleanup
+catch {wait -nowait}
 EOF
 
 # --- 4. EXECUTE WITH RETRY ---
 attempt=0
 success=0
+
+# Safety: kill any pre-existing /usage processes from this terminal
+pkill -f "claude /usage" 2>/dev/null
 
 while [[ $attempt -lt $MAX_RETRIES && $success -eq 0 ]]; do
     ((attempt++))
@@ -81,9 +93,15 @@ while [[ $attempt -lt $MAX_RETRIES && $success -eq 0 ]]; do
     rm -f "$LOG_FILE"
     expect "$DRIVER" > /dev/null 2>&1
 
+    # Extra safety: ensure no orphaned process from this attempt
+    sleep 0.2
+    pkill -f "claude /usage" 2>/dev/null
+
     if [[ -s "$LOG_FILE" ]]; then
-        # Validate we got the key patterns
-        if grep -q "Current session" "$LOG_FILE" && grep -q "Current week" "$LOG_FILE"; then
+        # Validate we got the key patterns AND actual percentage data
+        if grep -q "Current session" "$LOG_FILE" && \
+           grep -q "Current week" "$LOG_FILE" && \
+           grep -qE "[0-9]+%.*used" "$LOG_FILE"; then
             success=1
             debug_log "Got valid output on attempt $attempt"
         else
@@ -219,14 +237,14 @@ try:
     # --- REGEX PATTERNS ---
     # Session: "Current session" ... "X% used" ... "Resets <time>"
     session_match = re.search(
-        r'Current\s+session.*?(\d+)%\s*used.*?Resets\s+(.*?)(?:\s{2,}|\n|$)',
+        r'Current\s+session.*?(\d+)%\s*used.*?Resets\s*(.*?)(?:\s{2,}|\n|$)',
         clean_text, re.DOTALL | re.IGNORECASE
     )
 
     # Week: "Current week (all models)" - must explicitly match "(all models)"
     # to avoid matching "Sonnet only" section
     week_match = re.search(
-        r'Current\s+week\s+\(all\s+models\).*?(\d+)%\s*used.*?Resets\s+(.*?)(?:\s{2,}|\n|$)',
+        r'Current\s+week\s+\(all\s+models\).*?(\d+)%\s*used.*?Resets\s*(.*?)(?:\s{2,}|\n|$)',
         clean_text, re.DOTALL | re.IGNORECASE
     )
 
