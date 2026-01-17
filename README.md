@@ -27,56 +27,6 @@
 
 <img src="./loop_usage.gif" alt="Usage Demo" style="border-radius: 12px; max-width: 100%; height: auto;" />
 
----
-
-## ✨ Features
-
-- 📈 **Dual-window tracking** - Monitors both 5-hour session and 168-hour weekly limits
-- 🎯 **Pace calculation** - Compares usage percentage to elapsed time percentage
-- 🚦 **Visual status** - Green (sustainable) vs. Red (ahead of pace) indicators
-- ⚡ **Fast execution** - Results in under 1 second
-- 🔄 **Auto-retry** - Handles timing issues gracefully
-- 🔁 **Loop mode** - Continuous monitoring with configurable refresh interval
-- 🐛 **Debug mode** - Detailed logging for troubleshooting
-
----
-
-## 🎯 Why This Tool?
-
-Claude Code's `/usage` command shows percentages, but lacks critical context:
-
-| What's Missing            | What ccc Provides                        |
-| ------------------------- | ---------------------------------------- |
-| ❌ Time elapsed in window | ✅ Visual time vs. usage comparison      |
-| ❌ Pace indicators        | ✅ Clear "ahead/behind pace" status      |
-| ❌ Reset timing           | ✅ Exact countdown to reset              |
-| ❌ Actionable insights    | ✅ Color-coded sustainability indicators |
-
-### Example Output
-
-```text
-Usage Analysis - Monday December 08 at 14:32 (took 0.87s)
-
-  Weekly Usage (168h)
-  Time:   ████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  21% time
-  Usage:  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  40% used
-  Status: Above pace (19pp) | Resets in 5d 11h
-
-  ---
-
-  Session Usage (5h)
-  Time:   ████████████████████████░░░░░░░░░░░░░░░░  60% time
-  Usage:  ██████████████████████████████░░░░░░░░░░  75% used
-  Status: Above pace (15pp) | Resets in 2h 0m
-```
-
-**Legend:**
-
-- 🟢 **Green** = Using less than elapsed time (sustainable pace)
-- 🔴 **Red** = Consuming faster than time is passing (may hit limits early)
-
----
-
 ## 📚 Background: Claude Code Usage Limits
 
 Claude Code uses a **dual-window rate limiting system**:
@@ -223,7 +173,7 @@ Claude Code's `/usage` command is interactive and designed for human consumption
 - **zsh required** - Uses zsh-specific features (`zmodload zsh/datetime`, `$EPOCHREALTIME`)
 - **Timing sensitive** - The expect script has hardcoded timeouts; slow connections may fail
 - **Fragile parsing** - If Anthropic changes the `/usage` output format, the regex patterns may break
-- **No caching** - Each run spawns a new Claude Code instance (~1 second overhead)
+- **No caching** - Each run spawns a new temporary Claude Code instance (~1 second overhead)
 
 ---
 
