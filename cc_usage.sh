@@ -90,16 +90,20 @@ expect {
         send "\r"
         exp_continue
     }
+    "Sonnet only" {
+        # All sections loaded (Sonnet is last) - brief wait for render
+        sleep 0.5
+    }
     "% used" {
-        # Actual data loaded - wait for full render
-        sleep 1.5
+        # Fallback: first section only, wait longer for rest
+        sleep 2.0
     }
     timeout {
-        # Continue anyway - might have partial content
     }
 }
 
 # Stop logging before cleanup
+sleep 0.2
 log_file
 
 # Forcefully terminate - ESC alone is unreliable
