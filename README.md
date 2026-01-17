@@ -4,9 +4,11 @@
 
 **A visual, pace-aware CLI tool for monitoring your Claude Code usage limits**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
 
 [![Shell: zsh](https://img.shields.io/badge/Shell-zsh-blue.svg)](https://www.zsh.org/)
+
+![Platform: macOS/Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey.svg))]()]()()
 
 [![Platform: macOS/Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey.svg)]()
 
@@ -14,7 +16,7 @@
 
 ---
 
-## 📖 Overview
+## 📖 Overview x
 
 **ccc** (Claude Code Usage Analyzer) transforms Claude Code's basic `/usage` output into actionable insights. Instead of just seeing percentages, you get:
 
@@ -25,7 +27,7 @@
 
 ### 🎬 Demo
 
-<img src="./loop_usage.gif" alt="Usage Demo" style="border-radius: 12px; max-width: 100%; height: auto;" />
+- <img src="./loop_usage.gif" alt="Usage Demo" style="border-radius: 12px; max-width: 100%; height: auto;" />
 
 ## 📚 Background: Claude Code Usage Limits
 
