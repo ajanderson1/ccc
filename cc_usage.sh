@@ -3,26 +3,45 @@
 # Claude Code Usage Analyzer
 # ==============================================================================
 
-# --- 1. SETUP & TIMING ---
+# --- 1. SETUP ---
 zmodload zsh/datetime
-START_TIME=$EPOCHREALTIME
 
-LOG_FILE=$(mktemp -t claude_usage_raw.XXXXXX)
-DRIVER=$(mktemp -t claude_driver.XXXXXX)
+# --- ARGUMENT PARSING ---
+LOOP_MODE=0
+LOOP_INTERVAL=${LOOP_INTERVAL:-300}
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --loop)
+            LOOP_MODE=1
+            shift
+            ;;
+        --interval)
+            LOOP_INTERVAL="$2"
+            shift 2
+            ;;
+        -h|--help)
+            echo "Usage: $0 [--loop] [--interval SECONDS]"
+            echo "  --loop       Run continuously with countdown between refreshes"
+            echo "  --interval   Seconds between refreshes (default: 300)"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--loop] [--interval SECONDS]"
+            exit 1
+            ;;
+    esac
+done
+
 DEBUG=${DEBUG:-0}
 MAX_RETRIES=${MAX_RETRIES:-3}
-
-function cleanup {
-    [[ -f "$DRIVER" ]] && rm "$DRIVER"
-    [[ "$DEBUG" -eq 0 && -f "$LOG_FILE" ]] && rm "$LOG_FILE"
-}
-trap cleanup EXIT INT TERM
 
 function debug_log {
     [[ "$DEBUG" -eq 1 ]] && echo "[DEBUG] $1" >&2
 }
 
-# --- 2. CHECKS ---
+# --- 2. CHECKS (run once) ---
 if ! command -v expect &> /dev/null; then
     echo "Error: 'expect' is not installed."
     exit 1
@@ -37,8 +56,20 @@ else
     exit 1
 fi
 
-# --- 3. DRIVER (uses expect's log_file for reliable capture) ---
-cat <<EOF > "$DRIVER"
+# --- 3. MAIN FUNCTION ---
+run_usage_check() {
+    local START_TIME=$EPOCHREALTIME
+    local LOG_FILE=$(mktemp -t claude_usage_raw.XXXXXX)
+    local DRIVER=$(mktemp -t claude_driver.XXXXXX)
+
+    # Cleanup function
+    cleanup() {
+        [[ -f "$DRIVER" ]] && rm "$DRIVER"
+        [[ "$DEBUG" -eq 0 && -f "$LOG_FILE" ]] && rm "$LOG_FILE"
+    }
+
+    # --- DRIVER (uses expect's log_file for reliable capture) ---
+    cat <<EOF > "$DRIVER"
 set timeout 20
 log_file -noappend "$LOG_FILE"
 
@@ -79,49 +110,50 @@ catch {exec kill -9 \$pid}
 catch {wait -nowait}
 EOF
 
-# --- 4. EXECUTE WITH RETRY ---
-attempt=0
-success=0
+    # --- EXECUTE WITH RETRY ---
+    local attempt=0
+    local success=0
 
-# Safety: kill any pre-existing /usage processes from this terminal
-pkill -f "claude /usage" 2>/dev/null
-
-while [[ $attempt -lt $MAX_RETRIES && $success -eq 0 ]]; do
-    ((attempt++))
-    debug_log "Attempt $attempt of $MAX_RETRIES"
-
-    rm -f "$LOG_FILE"
-    expect "$DRIVER" > /dev/null 2>&1
-
-    # Extra safety: ensure no orphaned process from this attempt
-    sleep 0.2
+    # Safety: kill any pre-existing /usage processes from this terminal
     pkill -f "claude /usage" 2>/dev/null
 
-    if [[ -s "$LOG_FILE" ]]; then
-        # Validate we got the key patterns AND actual percentage data
-        if grep -q "Current session" "$LOG_FILE" && \
-           grep -q "Current week" "$LOG_FILE" && \
-           grep -qE "[0-9]+%.*used" "$LOG_FILE"; then
-            success=1
-            debug_log "Got valid output on attempt $attempt"
+    while [[ $attempt -lt $MAX_RETRIES && $success -eq 0 ]]; do
+        ((attempt++))
+        debug_log "Attempt $attempt of $MAX_RETRIES"
+
+        rm -f "$LOG_FILE"
+        expect "$DRIVER" > /dev/null 2>&1
+
+        # Extra safety: ensure no orphaned process from this attempt
+        sleep 0.2
+        pkill -f "claude /usage" 2>/dev/null
+
+        if [[ -s "$LOG_FILE" ]]; then
+            # Validate we got the key patterns AND actual percentage data
+            if grep -q "Current session" "$LOG_FILE" && \
+               grep -q "Current week" "$LOG_FILE" && \
+               grep -qE "[0-9]+%.*used" "$LOG_FILE"; then
+                success=1
+                debug_log "Got valid output on attempt $attempt"
+            else
+                debug_log "Output missing required patterns, retrying..."
+                [[ $attempt -lt $MAX_RETRIES ]] && sleep 1
+            fi
         else
-            debug_log "Output missing required patterns, retrying..."
+            debug_log "No output captured, retrying..."
             [[ $attempt -lt $MAX_RETRIES ]] && sleep 1
         fi
-    else
-        debug_log "No output captured, retrying..."
-        [[ $attempt -lt $MAX_RETRIES ]] && sleep 1
+    done
+
+    if [[ $success -eq 0 ]]; then
+        echo "Error: Usage data unavailable after $MAX_RETRIES attempts."
+        echo "Try running '/usage' directly inside Claude Code."
+        cleanup
+        return 1
     fi
-done
 
-if [[ $success -eq 0 ]]; then
-    echo "Error: Usage data unavailable after $MAX_RETRIES attempts."
-    echo "Try running '/usage' directly inside Claude Code."
-    exit 1
-fi
-
-# --- 5. PARSER (Python) ---
-python3 - "$LOG_FILE" "$START_TIME" "$DEBUG" <<'END_PYTHON'
+    # --- PARSER (Python) ---
+    python3 - "$LOG_FILE" "$START_TIME" "$DEBUG" <<'END_PYTHON'
 import sys
 import re
 import time
@@ -328,3 +360,31 @@ except Exception as e:
         traceback.print_exc()
 
 END_PYTHON
+
+    cleanup
+}
+
+# --- 4. EXECUTION ---
+if [[ $LOOP_MODE -eq 1 ]]; then
+    # Loop mode: run continuously with countdown
+    trap "echo; exit 0" INT TERM
+
+    while true; do
+        clear
+        run_usage_check
+
+        # Save cursor position
+        tput sc
+
+        for ((i=LOOP_INTERVAL; i>0; i--)); do
+            # Restore cursor, clear line, print timer
+            tput rc
+            tput el
+            printf "Next refresh in %3d seconds... (Ctrl+C to exit)" "$i"
+            sleep 1
+        done
+    done
+else
+    # Single run mode
+    run_usage_check
+fi
