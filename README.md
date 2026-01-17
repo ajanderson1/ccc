@@ -4,13 +4,9 @@
 
 **A visual, pace-aware CLI tool for monitoring your Claude Code usage limits**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) 
-
-[![Shell: zsh](https://img.shields.io/badge/Shell-zsh-blue.svg)](https://www.zsh.org/)
-
-![Platform: macOS/Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey.svg))]()]()()
-
-[![Platform: macOS/Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey.svg)]()
+![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
+![Shell: zsh](https://img.shields.io/badge/Shell-zsh-blue.svg)
+![Platform: macOS/Linux](https://img.shields.io/badge/Platform-macOS%20%7C%20Linux-lightgrey.svg)
 
 </div>
 
