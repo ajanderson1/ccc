@@ -190,7 +190,7 @@ def clean_date_string(text):
     text = re.sub(r'(?i)(am|pm)$', lambda m: m.group(1).upper(), text)
     return text.strip()
 
-def parse_reset_time(time_str):
+def parse_reset_time(time_str, window_hours=5):
     if not time_str: return None
     now = datetime.datetime.now()
     clean = clean_date_string(time_str)
@@ -248,15 +248,39 @@ def parse_reset_time(time_str):
                 # the parsed date (Today 1:59am) is in the past.
                 # "Resets" always implies the future.
                 # If the parsed time is earlier than NOW (minus a small buffer),
-                # assume it refers to Tomorrow.
+                # add appropriate days: 7 for weekly (168h), 1 for session.
                 if dt < now - timedelta(minutes=15):
-                    dt += timedelta(days=1)
+                    days_to_add = 7 if window_hours == 168 else 1
+                    dt += timedelta(days=days_to_add)
 
                 break
             except ValueError:
                 continue
 
     return dt
+
+def validate_reset_time(reset_dt, window_hours, reset_str):
+    """
+    Validate parsed reset time makes sense.
+    Returns (reset_dt, warning_msg) - dt may be None if invalid.
+    """
+    if not reset_dt:
+        return None, f"Failed to parse: '{reset_str}'"
+
+    now = datetime.datetime.now()
+    remain = reset_dt - now
+    remain_hours = remain.total_seconds() / 3600
+    max_hours = window_hours + 1  # Small buffer for timing
+
+    # Sanity check: time remaining can't exceed window
+    if remain_hours > max_hours:
+        return None, f"Invalid: {remain_hours:.1f}h remaining exceeds {window_hours}h window"
+
+    # Sanity check: time remaining shouldn't be very negative
+    if remain_hours < -window_hours:
+        return None, f"Invalid: reset time {remain_hours:.1f}h in past"
+
+    return reset_dt, None
 
 def create_bar(percent):
     p = max(0, min(100, percent))
@@ -271,10 +295,14 @@ try:
     clean_text = strip_ansi(content)
 
     # --- REGEX PATTERNS ---
-    # Session: "Current session" ... "X% used" ... "Resets <time>"
+    # Split content at "Current week" to isolate session section
+    session_section = clean_text.split('Current week')[0] if 'Current week' in clean_text else clean_text
+
+    # Session: "Current session" ... "X% used" ... "Rese(t)s <time>"
+    # Handle potential character corruption (Reses vs Resets)
     session_match = re.search(
-        r'Current\s+session.*?(\d+)%\s*used.*?Resets\s*(.*?)(?:\s{2,}|\n|$)',
-        clean_text, re.DOTALL | re.IGNORECASE
+        r'Current\s+session.*?(\d+)%\s*used.*?Rese[ts]*\s*(.*?)(?:\s{2,}|\n|$)',
+        session_section, re.DOTALL | re.IGNORECASE
     )
 
     # Week: "Current week (all models)" - must explicitly match "(all models)"
@@ -307,50 +335,65 @@ try:
 
     def process_and_print(title, used_str, reset_str, window_hours):
         used = int(used_str)
-        reset_dt = parse_reset_time(reset_str)
+        reset_dt = parse_reset_time(reset_str, window_hours)
+        reset_dt, warning = validate_reset_time(reset_dt, window_hours, reset_str)
 
         print(f"  {BOLD}{title}{RESET}")
 
-        if reset_dt:
-            if window_hours == 168:
-                start_dt = reset_dt - timedelta(days=7)
-            else:
-                start_dt = reset_dt - timedelta(hours=window_hours)
-
-            elapsed_pct = ((now - start_dt).total_seconds() / (window_hours * 3600)) * 100
-            pace = used - elapsed_pct
-            remain = reset_dt - now
-
-            # Clamp visualization to 100% so bars don't break lines
-            bar_pct = min(100, elapsed_pct)
-
-            print(f"  Time:   {create_bar(bar_pct)}  {int(elapsed_pct)}% time")
-            c = RED if used > elapsed_pct else GREEN
-            print(f"  Usage:  {c}{create_bar(used)}{RESET}  {used}% used")
-
-            pace_int = round(pace)
-            if pace_int == 0:
-                msg = "On pace"
-            else:
-                p_str = f"{abs(pace_int)}pp"
-                msg = f"Above pace ({p_str})" if pace_int > 0 else f"Below pace ({p_str})"
-
-            days = remain.days
-            hours = remain.seconds // 3600
-            mins = (remain.seconds // 60) % 60
-
-            if days > 0:
-                remain_str = f"{days}d {hours}h"
-            else:
-                remain_str = f"{hours}h {mins}m"
-
-            print(f"  Status: {c}{msg}{RESET} | Resets in {remain_str}")
-        else:
+        if warning:
             print(f"  Usage:  {create_bar(used)}  {used}% used")
-            print(f"  {RED}Date error: '{reset_str}'{RESET}")
+            print(f"  {RED}Warning: {warning}{RESET}")
+            if debug_mode:
+                print(f"  {DIM}Raw reset_str: '{reset_str}'{RESET}")
+                if reset_dt is None:
+                    # Try parsing again just to show what we got
+                    parsed_attempt = parse_reset_time(reset_str, window_hours)
+                    if parsed_attempt:
+                        print(f"  {DIM}Parsed datetime: {parsed_attempt}{RESET}")
+                        print(f"  {DIM}Expected range: now to +{window_hours}h{RESET}")
+            return
+
+        if window_hours == 168:
+            start_dt = reset_dt - timedelta(days=7)
+        else:
+            start_dt = reset_dt - timedelta(hours=window_hours)
+
+        elapsed_pct = ((now - start_dt).total_seconds() / (window_hours * 3600)) * 100
+        pace = used - elapsed_pct
+        remain = reset_dt - now
+
+        # Clamp visualization to 100% so bars don't break lines
+        bar_pct = min(100, elapsed_pct)
+
+        print(f"  Time:   {create_bar(bar_pct)}  {int(elapsed_pct)}% time")
+        c = RED if used > elapsed_pct else GREEN
+        print(f"  Usage:  {c}{create_bar(used)}{RESET}  {used}% used")
+
+        pace_int = round(pace)
+        if pace_int == 0:
+            msg = "On pace"
+        else:
+            p_str = f"{abs(pace_int)}pp"
+            msg = f"Above pace ({p_str})" if pace_int > 0 else f"Below pace ({p_str})"
+
+        days = remain.days
+        hours = remain.seconds // 3600
+        mins = (remain.seconds // 60) % 60
+
+        if days > 0:
+            remain_str = f"{days}d {hours}h"
+        else:
+            remain_str = f"{hours}h {mins}m"
+
+        print(f"  Status: {c}{msg}{RESET} | Resets in {remain_str}")
 
     # --- PRINT HEADER ---
     print(f"\n{BOLD}Usage Analysis - {now.strftime('%A %B %d at %H:%M')} (took {duration:.2f}s){RESET}\n")
+
+    if debug_mode:
+        print(f"  {DIM}DEBUG: Session reset_str = '{session_match.group(2)}'{RESET}")
+        print(f"  {DIM}DEBUG: Week reset_str = '{week_match.group(2)}'{RESET}")
+        print()
 
     process_and_print("Weekly Usage (168h)", week_match.group(1), week_match.group(2), 168)
     print(f"\n  {DIM}---{RESET}\n")

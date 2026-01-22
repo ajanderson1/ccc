@@ -202,6 +202,20 @@ apt install expect
 - ✅ Try increasing retries: `MAX_RETRIES=5 ./cc_usage.sh`
 - ✅ Enable debug mode to see what's happening: `DEBUG=1 ./cc_usage.sh`
 
+### Trust dialog appears every run
+
+If you see "Do you trust the files in this folder?" every time, add this to `~/.claude/settings.json`:
+
+```json
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  }
+}
+```
+
+This skips the trust prompt while still respecting any `deny` rules you've configured.
+
 ### "Error: Data incomplete" or "Date error"
 
 The error now shows diagnostic information including which data is missing and a preview of what was captured. This could happen if:
