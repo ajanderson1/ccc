@@ -190,9 +190,37 @@ def clean_date_string(text):
     text = re.sub(r'(?i)(am|pm)$', lambda m: m.group(1).upper(), text)
     return text.strip()
 
-def parse_reset_time(time_str, window_hours=5):
+def parse_reset_time(time_str, window_hours=5, section_text=None):
     if not time_str: return None
     now = datetime.datetime.now()
+
+    # PRIMARY: Try standard time pattern in captured string
+    time_pattern = r'(\d{1,2})(:\d{2})?(am|pm)'
+    time_match = re.search(time_pattern, time_str, re.IGNORECASE)
+
+    # FALLBACK: If no valid time in captured str, search section for "Resets X:XXam/pm"
+    # The time may be split across lines due to terminal control character corruption
+    if not time_match and section_text:
+        # Allow up to 20 chars (including newlines) between "Rese" and the time
+        fallback_pattern = r'Rese[ts]*[\s\S]{0,20}?(\d{1,2}:\d{2}(?:am|pm))'
+        fallback_match = re.search(fallback_pattern, section_text, re.IGNORECASE)
+        if fallback_match:
+            time_str = fallback_match.group(1)
+            time_match = re.search(time_pattern, time_str, re.IGNORECASE)
+
+    # If we found a time match, reconstruct time_str properly
+    if time_match:
+        hour = time_match.group(1)
+        minutes = time_match.group(2) or ''
+        ampm = time_match.group(3)
+
+        # Check for date prefix (e.g., "Jan 29 at") in original string
+        date_match = re.search(r'([A-Za-z]{3})\s+(\d{1,2})\s+at', time_str, re.IGNORECASE)
+        if date_match:
+            time_str = f"{date_match.group(1)} {date_match.group(2)} at {hour}{minutes}{ampm}"
+        else:
+            time_str = f"{hour}{minutes}{ampm}"
+
     clean = clean_date_string(time_str)
     dt = None
 
@@ -333,9 +361,9 @@ try:
     now = datetime.datetime.now()
     duration = time.time() - start_ts
 
-    def process_and_print(title, used_str, reset_str, window_hours):
+    def process_and_print(title, used_str, reset_str, window_hours, section_text=None):
         used = int(used_str)
-        reset_dt = parse_reset_time(reset_str, window_hours)
+        reset_dt = parse_reset_time(reset_str, window_hours, section_text)
         reset_dt, warning = validate_reset_time(reset_dt, window_hours, reset_str)
 
         print(f"  {BOLD}{title}{RESET}")
@@ -347,7 +375,7 @@ try:
                 print(f"  {DIM}Raw reset_str: '{reset_str}'{RESET}")
                 if reset_dt is None:
                     # Try parsing again just to show what we got
-                    parsed_attempt = parse_reset_time(reset_str, window_hours)
+                    parsed_attempt = parse_reset_time(reset_str, window_hours, section_text)
                     if parsed_attempt:
                         print(f"  {DIM}Parsed datetime: {parsed_attempt}{RESET}")
                         print(f"  {DIM}Expected range: now to +{window_hours}h{RESET}")
@@ -395,9 +423,9 @@ try:
         print(f"  {DIM}DEBUG: Week reset_str = '{week_match.group(2)}'{RESET}")
         print()
 
-    process_and_print("Weekly Usage (168h)", week_match.group(1), week_match.group(2), 168)
+    process_and_print("Weekly Usage (168h)", week_match.group(1), week_match.group(2), 168, clean_text)
     print(f"\n  {DIM}---{RESET}\n")
-    process_and_print("Session Usage (5h)", session_match.group(1), session_match.group(2), 5)
+    process_and_print("Session Usage (5h)", session_match.group(1), session_match.group(2), 5, session_section)
     print("")
 
 except Exception as e:
