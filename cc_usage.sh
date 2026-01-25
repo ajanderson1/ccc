@@ -198,14 +198,15 @@ def parse_reset_time(time_str, window_hours=5, section_text=None):
     time_pattern = r'(\d{1,2})(:\d{2})?(am|pm)'
     time_match = re.search(time_pattern, time_str, re.IGNORECASE)
 
-    # FALLBACK: If no valid time in captured str, search section for "Resets X:XXam/pm"
-    # The time may be split across lines due to terminal control character corruption
+    # FALLBACK: Terminal does progressive rendering with cursor movement,
+    # so raw capture may contain multiple versions. Find ALL valid time
+    # patterns and use the LAST one (the final/complete rendering).
     if not time_match and section_text:
-        # Allow up to 20 chars (including newlines) between "Rese" and the time
-        fallback_pattern = r'Rese[ts]*[\s\S]{0,20}?(\d{1,2}:\d{2}(?:am|pm))'
-        fallback_match = re.search(fallback_pattern, section_text, re.IGNORECASE)
-        if fallback_match:
-            time_str = fallback_match.group(1)
+        # Match time with optional date prefix: "12:59am" or "Jan 29 at 6:59pm"
+        full_time_pattern = r'(?:[A-Za-z]{3}\s+\d{1,2}\s+at\s+)?\d{1,2}:\d{2}(?:am|pm)'
+        all_matches = re.findall(full_time_pattern, section_text, re.IGNORECASE)
+        if all_matches:
+            time_str = all_matches[-1]  # Use the LAST match
             time_match = re.search(time_pattern, time_str, re.IGNORECASE)
 
     # If we found a time match, reconstruct time_str properly
