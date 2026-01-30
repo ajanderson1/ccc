@@ -5,7 +5,7 @@ Unit tests for date/time parsing (parse_reset_time and clean_date_string).
 import pytest
 import datetime
 from datetime import timedelta
-from tests.parser_extracted import parse_reset_time, clean_date_string, validate_reset_time
+from tests.parser_extracted import parse_reset_time, clean_date_string, validate_reset_time, cross_validate_reset
 
 
 class TestCleanDateString:
@@ -337,3 +337,139 @@ class TestValidateResetTime:
         dt, warning = validate_reset_time(reset_dt, 5, "test", now=base_time)
         assert dt == reset_dt
         assert warning is None
+
+
+class TestPastDateHandling:
+    """Tests for handling dates that are in the past within same month.
+
+    This tests a known gap: when the API returns a date like "Jan 29" and
+    today is Jan 30, the date is 1 day in the past. The year wrap logic
+    (300-day threshold) won't catch this, so we need cross-validation.
+    """
+
+    def test_date_yesterday_same_month_parsing(self):
+        """Date 1 day in past (same month) - should parse but cross-validate warns.
+
+        The 300-day year wrap threshold is designed for December→January boundaries,
+        NOT for dates within the same month. A date 1 day in the past will parse
+        as the current year, resulting in a negative remaining time.
+        """
+        now = datetime.datetime(2026, 1, 30, 11, 39, 0)  # Jan 30 at 11:39am
+        result = parse_reset_time("Jan 29 at 7pm", window_hours=168, now=now)
+
+        # Parser will parse it as Jan 29, 2026 (yesterday)
+        assert result is not None
+        assert result.year == 2026
+        assert result.month == 1
+        assert result.day == 29
+        assert result.hour == 19
+
+        # validate_reset_time allows small negative values
+        dt, warning = validate_reset_time(result, 168, "Jan 29 at 7pm", now=now)
+        # -16.65 hours is within tolerance (-168h to +169h)
+        assert dt is not None
+        assert warning is None
+
+        # BUT cross_validate_reset should catch this!
+        cross_warning = cross_validate_reset(result, 168, "Jan 29 at 7pm", now=now)
+        assert cross_warning is not None
+        assert "remaining (expected ≥0)" in cross_warning
+
+    def test_date_yesterday_weekly_should_flag_inconsistency(self):
+        """For weekly reset, a date 1 day in past should trigger cross-validation warning."""
+        now = datetime.datetime(2026, 1, 30, 14, 0, 0)  # Jan 30 at 2pm
+        # "Jan 29 at 6pm" is ~20 hours in the past
+        result = parse_reset_time("Jan 29 at 6pm", window_hours=168, now=now)
+
+        assert result is not None
+        # Cross-validation should detect negative remaining time
+        cross_warning = cross_validate_reset(result, 168, "Jan 29 at 6pm", now=now)
+        assert cross_warning is not None
+        assert "-" in cross_warning  # Should show negative hours
+
+    def test_date_week_plus_ago_same_month(self):
+        """Date >7 days in past should parse but fail validation.
+
+        A date more than 7 days (>168h) in the past exceeds the -window_hours
+        threshold in validate_reset_time.
+        """
+        now = datetime.datetime(2026, 1, 30, 12, 0, 0)  # Jan 30 at noon
+        # "Jan 22 at 12pm" is 8 days ago (192h)
+        result = parse_reset_time("Jan 22 at 12pm", window_hours=168, now=now)
+
+        assert result is not None
+        assert result.day == 22
+
+        # This should fail validate_reset_time (< -168h threshold)
+        dt, warning = validate_reset_time(result, 168, "Jan 22 at 12pm", now=now)
+        assert dt is None
+        assert "in past" in warning
+
+    def test_date_in_future_same_month_valid(self):
+        """Date in future (same month) should parse and validate correctly."""
+        now = datetime.datetime(2026, 1, 28, 14, 30, 0)  # Jan 28 at 2:30pm
+        result = parse_reset_time("Jan 29 at 6:59pm", window_hours=168, now=now)
+
+        assert result is not None
+        assert result.year == 2026
+        assert result.day == 29
+
+        # Should validate successfully
+        dt, warning = validate_reset_time(result, 168, "Jan 29 at 6:59pm", now=now)
+        assert dt is not None
+        assert warning is None
+
+        # Cross-validation should also pass
+        cross_warning = cross_validate_reset(result, 168, "Jan 29 at 6:59pm", now=now)
+        assert cross_warning is None
+
+
+class TestCrossValidation:
+    """Tests for the cross_validate_reset function."""
+
+    @pytest.fixture
+    def base_time(self):
+        return datetime.datetime(2026, 1, 30, 11, 47, 0)
+
+    def test_valid_weekly_reset(self, base_time):
+        """Valid weekly reset should not produce warning."""
+        reset_dt = datetime.datetime(2026, 2, 5, 19, 0, 0)  # 6d 7h in future
+        warning = cross_validate_reset(reset_dt, 168, "Feb 5 at 7pm", now=base_time)
+        assert warning is None
+
+    def test_valid_session_reset(self, base_time):
+        """Valid session reset should not produce warning."""
+        reset_dt = base_time + timedelta(hours=3)
+        warning = cross_validate_reset(reset_dt, 5, "test", now=base_time)
+        assert warning is None
+
+    def test_negative_remaining_warns(self, base_time):
+        """Negative remaining time should produce warning."""
+        reset_dt = base_time - timedelta(hours=1)  # 1 hour in past
+        warning = cross_validate_reset(reset_dt, 168, "test", now=base_time)
+        assert warning is not None
+        assert "expected ≥0" in warning
+
+    def test_exceeds_window_warns(self, base_time):
+        """Remaining time exceeding window should produce warning."""
+        reset_dt = base_time + timedelta(hours=200)  # 200h in future
+        warning = cross_validate_reset(reset_dt, 168, "test", now=base_time)
+        assert warning is not None
+        assert "expected ≤168h" in warning
+
+    def test_none_input_no_warning(self, base_time):
+        """None input should not produce warning (handled elsewhere)."""
+        warning = cross_validate_reset(None, 168, "test", now=base_time)
+        assert warning is None
+
+    def test_exactly_at_boundary_valid(self, base_time):
+        """Reset exactly at window boundary should be valid."""
+        reset_dt = base_time + timedelta(hours=168)
+        warning = cross_validate_reset(reset_dt, 168, "test", now=base_time)
+        assert warning is None
+
+    def test_just_over_boundary_warns(self, base_time):
+        """Reset just over window should warn."""
+        reset_dt = base_time + timedelta(hours=168, minutes=1)
+        warning = cross_validate_reset(reset_dt, 168, "test", now=base_time)
+        assert warning is not None

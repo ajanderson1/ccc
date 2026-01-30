@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-01-30
+
+### Added
+- **Cross-validation for reset times** - New `cross_validate_reset()` function catches parsing inconsistencies
+  - Validates remaining time is within expected bounds (0-168h for weekly, 0-5h for session)
+  - Catches negative remaining times that slip through the year-wrap logic
+- **Always-on diagnostic logging** - Raw captured strings now shown at bottom of output
+  - Format: `Raw: week='...' session='...'`
+  - Enables post-hoc diagnosis without DEBUG mode
+- **Determinism tests** - New `tests/unit/test_determinism.py` verifies parsing consistency
+  - 8 tests confirming same input always produces same output
+- **Past date handling tests** - New test classes in `test_date_parsing.py`
+  - `TestPastDateHandling` - Tests for dates in past within same month
+  - `TestCrossValidation` - Tests for cross-validation function
+
+### Fixed
+- **Past date detection gap** - Year wrap uses 300-day threshold (designed for Dec→Jan boundary)
+  - Dates 1 day in past (same month) now caught by cross-validation
+  - Example: "Jan 29 at 7pm" on Jan 30 → negative remaining → warning displayed
+
 ## [0.2.0] - 2025-01-30
 
 ### Added

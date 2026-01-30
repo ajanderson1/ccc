@@ -9,7 +9,7 @@ for ANSI stripping, date parsing, and usage extraction.
 import re
 import datetime
 from datetime import timedelta
-from typing import Optional, Tuple, Dict, Any, NamedTuple
+from typing import Optional, Tuple
 from dataclasses import dataclass
 
 
@@ -230,6 +230,46 @@ def validate_reset_time(
         return None, f"Invalid: reset time {remain_hours:.1f}h in past"
 
     return reset_dt, None
+
+
+def cross_validate_reset(
+    reset_dt: Optional[datetime.datetime],
+    window_hours: int,
+    reset_str: str,
+    now: Optional[datetime.datetime] = None
+) -> Optional[str]:
+    """
+    Cross-validate that parsed reset time is consistent with expected window.
+
+    For weekly (168h), remaining should be 0-168h.
+    For session (5h), remaining should be 0-5h.
+
+    Args:
+        reset_dt: Parsed datetime (may be None)
+        window_hours: Expected window (5 or 168)
+        reset_str: Original string (for error messages)
+        now: Current datetime (for testing)
+
+    Returns:
+        Warning message if inconsistent, None if valid.
+    """
+    if reset_dt is None:
+        return None  # Already handled by validate_reset_time
+
+    if now is None:
+        now = datetime.datetime.now()
+
+    remain = reset_dt - now
+    remain_hours = remain.total_seconds() / 3600
+
+    # Check bounds based on window type
+    if remain_hours < 0:
+        return f"Inconsistent: '{reset_str}' → {remain_hours:.1f}h remaining (expected ≥0)"
+
+    if remain_hours > window_hours:
+        return f"Inconsistent: '{reset_str}' → {remain_hours:.1f}h remaining (expected ≤{window_hours}h)"
+
+    return None
 
 
 def extract_usage_data(content: str) -> ParseResult:

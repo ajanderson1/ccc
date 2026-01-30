@@ -322,6 +322,34 @@ def validate_reset_time(reset_dt, window_hours, reset_str):
 
     return reset_dt, None
 
+
+def cross_validate_reset(reset_dt, window_hours, reset_str, now=None):
+    """
+    Cross-validate that parsed reset time is consistent with expected window.
+
+    For weekly (168h), remaining should be 0-168h.
+    For session (5h), remaining should be 0-5h.
+
+    Returns warning message if inconsistent, None if valid.
+    """
+    if reset_dt is None:
+        return None  # Already handled by validate_reset_time
+
+    if now is None:
+        now = datetime.datetime.now()
+
+    remain = reset_dt - now
+    remain_hours = remain.total_seconds() / 3600
+
+    # Check bounds based on window type
+    if remain_hours < 0:
+        return f"Inconsistent: '{reset_str}' → {remain_hours:.1f}h remaining (expected ≥0)"
+
+    if remain_hours > window_hours:
+        return f"Inconsistent: '{reset_str}' → {remain_hours:.1f}h remaining (expected ≤{window_hours}h)"
+
+    return None
+
 def create_bar(percent):
     p = max(0, min(100, percent))
     fill = int((p / 100) * WIDTH)
@@ -378,6 +406,9 @@ try:
         reset_dt = parse_reset_time(reset_str, window_hours, section_text)
         reset_dt, warning = validate_reset_time(reset_dt, window_hours, reset_str)
 
+        # Cross-validate consistency
+        cross_warning = cross_validate_reset(reset_dt, window_hours, reset_str, now)
+
         print(f"  {BOLD}{title}{RESET}")
 
         if warning:
@@ -391,6 +422,11 @@ try:
                     if parsed_attempt:
                         print(f"  {DIM}Parsed datetime: {parsed_attempt}{RESET}")
                         print(f"  {DIM}Expected range: now to +{window_hours}h{RESET}")
+            return
+
+        if cross_warning:
+            print(f"  Usage:  {create_bar(used)}  {used}% used")
+            print(f"  {RED}Warning: {cross_warning}{RESET}")
             return
 
         if window_hours == 168:
@@ -430,14 +466,21 @@ try:
     # --- PRINT HEADER ---
     print(f"\n{BOLD}Usage Analysis - {now.strftime('%A %B %d at %H:%M')} (took {duration:.2f}s){RESET}\n")
 
+    # Always capture raw strings for diagnostic purposes
+    raw_session_str = session_match.group(2).strip()
+    raw_week_str = week_match.group(2).strip()
+
     if debug_mode:
-        print(f"  {DIM}DEBUG: Session reset_str = '{session_match.group(2)}'{RESET}")
-        print(f"  {DIM}DEBUG: Week reset_str = '{week_match.group(2)}'{RESET}")
+        print(f"  {DIM}DEBUG: Session reset_str = '{raw_session_str}'{RESET}")
+        print(f"  {DIM}DEBUG: Week reset_str = '{raw_week_str}'{RESET}")
         print()
 
-    process_and_print("Weekly Usage (168h)", week_match.group(1), week_match.group(2), 168, clean_text)
+    process_and_print("Weekly Usage (168h)", week_match.group(1), raw_week_str, 168, clean_text)
     print(f"\n  {DIM}---{RESET}\n")
-    process_and_print("Session Usage (5h)", session_match.group(1), session_match.group(2), 5, session_section)
+    process_and_print("Session Usage (5h)", session_match.group(1), raw_session_str, 5, session_section)
+
+    # Always show raw captured strings in dim text for post-hoc diagnosis
+    print(f"\n  {DIM}Raw: week='{raw_week_str}' session='{raw_session_str}'{RESET}")
     print("")
 
 except Exception as e:
