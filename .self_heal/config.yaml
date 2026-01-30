@@ -1,0 +1,30 @@
+# Self-Healing Test System Configuration
+
+# Healing behavior
+max_iterations: 3              # Max fix attempts before giving up
+max_fixes_per_run: 5           # Safety limit on total fixes
+max_lines_changed: 50          # Reject fixes that change too much
+
+# Autonomy settings (full autonomy mode)
+auto_apply: true               # Commit fixes automatically
+auto_commit: true              # Create git commits for each fix
+require_human_review: false    # No manual approval needed
+
+# AI assistance (enabled)
+use_ai_for_unknown: true       # Invoke Claude API for complex failures
+ai_model: "claude-sonnet-4-20250514"
+ai_context_lines: 100          # Lines of context to send to AI
+
+# Regression detection
+oscillation_window: 10         # Track last N states for loop detection
+require_net_progress: true     # Stop if no improvement after attempts
+
+# Fixture management
+auto_quarantine_failures: true # Move unfixable fixtures to quarantine
+capture_on_success: false      # Don't capture new fixtures after successful parse
+
+# Paths (relative to project root)
+cc_usage_script: "cc_usage.sh"
+parser_module: "tests/parser_extracted.py"
+history_file: ".self_heal/history.json"
+rollback_dir: ".self_heal/rollback"
