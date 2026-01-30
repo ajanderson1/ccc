@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-01-30
+
+### Fixed
+- **Section text override bug** - `parse_reset_time` was incorrectly overriding valid captured times
+  - When `time_str` already had a date prefix (e.g., "Feb 5 at 6:59pm"), the function still searched `section_text` for time patterns and used the LAST match
+  - This caused stray times (like "10:16am" from a log line) to override the correct reset time
+  - Fix: Only use `section_text` fallback when `time_str` lacks a date prefix
+  - Symptom: "2% time / 6d 20h" instead of correct "11% time / 6d 5h"
+
+### Added
+- New test `test_date_prefix_not_overridden_by_section_text` to prevent regression
+
 ## [0.2.1] - 2025-01-30
 
 ### Added

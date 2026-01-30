@@ -86,10 +86,14 @@ def parse_reset_time(
     time_pattern = r'(\d{1,2})(:\d{2})?(am|pm)'
     time_match = None
 
-    # PRIMARY: Search section_text for valid time patterns (most reliable).
-    # Terminal rendering corrupts the captured time_str with cursor movement,
-    # partial updates, and double-spaces. Search the full section instead.
-    if section_text:
+    # Check if time_str already has a date prefix (e.g., "Feb 5 at 6:59pm")
+    # If so, trust it directly - don't search section_text which may find stray times
+    has_date_prefix = time_str and re.search(r'[A-Za-z]{3}\s+\d{1,2}\s+at', time_str, re.IGNORECASE)
+
+    # FALLBACK ONLY: Search section_text when time_str is corrupted or time-only.
+    # Terminal rendering can corrupt the captured time_str with cursor movement,
+    # partial updates, and double-spaces. Search the full section as backup.
+    if section_text and not has_date_prefix:
         # Match time with optional date prefix: "12:59am" or "Jan 29 at 6:59pm"
         full_time_pattern = r'(?:[A-Za-z]{3}\s+\d{1,2}\s+at\s+)?\d{1,2}:\d{2}(?:am|pm)'
         all_matches = re.findall(full_time_pattern, section_text, re.IGNORECASE)
@@ -97,7 +101,7 @@ def parse_reset_time(
             time_str = all_matches[-1]  # Use the LAST match
             time_match = re.search(time_pattern, time_str, re.IGNORECASE)
 
-    # FALLBACK: Try the captured time_str directly
+    # PRIMARY: Try the captured time_str directly (now trusted if has date prefix)
     if not time_match and time_str:
         time_match = re.search(time_pattern, time_str, re.IGNORECASE)
 

@@ -270,6 +270,43 @@ class TestParseResetTime:
         assert result.day == 29
         assert result.hour == 18
 
+    def test_date_prefix_not_overridden_by_section_text(self, base_time):
+        """If time_str has date prefix, section_text should NOT override it.
+
+        This tests the bug where section_text search found stray times
+        (like "10:16am" from a timestamp) and used them instead of the
+        correct captured time.
+        """
+        # time_str has correct date+time
+        time_str = "Feb 5 at 6:59pm (Europe/Stockholm)"
+        # section_text has a stray time AFTER the correct time
+        section_text = """
+        Current week (all models)
+        10% used
+        Resets Feb 5 at 6:59pm (Europe/Stockholm)
+
+        Some log at 10:16am
+        """
+        result = parse_reset_time(time_str, window_hours=168, section_text=section_text, now=base_time)
+        assert result is not None
+        # Should be Feb 5 at 6:59pm, NOT some stray time
+        assert result.month == 2
+        assert result.day == 5
+        assert result.hour == 18
+        assert result.minute == 59
+
+    def test_time_only_still_uses_section_text_fallback(self, base_time):
+        """If time_str is time-only (no date), section_text CAN be used as fallback."""
+        time_str = "corrupted garbage"
+        section_text = """
+        Resets 6:59pm
+        """
+        result = parse_reset_time(time_str, window_hours=5, section_text=section_text, now=base_time)
+        assert result is not None
+        # Should find 6:59pm from section_text
+        assert result.hour == 18
+        assert result.minute == 59
+
     def test_invalid_string_returns_none(self, base_time):
         """Completely invalid string should return None."""
         result = parse_reset_time("not a time", window_hours=5, now=base_time)
