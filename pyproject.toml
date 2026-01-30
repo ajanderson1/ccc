@@ -1,0 +1,23 @@
+[project]
+name = "ccc-self-heal"
+version = "0.1.0"
+description = "Self-healing test system for cc_usage.sh"
+requires-python = ">=3.9"
+dependencies = [
+    "pytest>=7.0",
+    "pytest-json-report>=1.5",
+    "anthropic>=0.18",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"

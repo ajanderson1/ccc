@@ -191,23 +191,24 @@ def clean_date_string(text):
     return text.strip()
 
 def parse_reset_time(time_str, window_hours=5, section_text=None):
-    if not time_str: return None
     now = datetime.datetime.now()
-
-    # PRIMARY: Try standard time pattern in captured string
     time_pattern = r'(\d{1,2})(:\d{2})?(am|pm)'
-    time_match = re.search(time_pattern, time_str, re.IGNORECASE)
+    time_match = None
 
-    # FALLBACK: Terminal does progressive rendering with cursor movement,
-    # so raw capture may contain multiple versions. Find ALL valid time
-    # patterns and use the LAST one (the final/complete rendering).
-    if not time_match and section_text:
+    # PRIMARY: Search section_text for valid time patterns (most reliable).
+    # Terminal rendering corrupts the captured time_str with cursor movement,
+    # partial updates, and double-spaces. Search the full section instead.
+    if section_text:
         # Match time with optional date prefix: "12:59am" or "Jan 29 at 6:59pm"
         full_time_pattern = r'(?:[A-Za-z]{3}\s+\d{1,2}\s+at\s+)?\d{1,2}:\d{2}(?:am|pm)'
         all_matches = re.findall(full_time_pattern, section_text, re.IGNORECASE)
         if all_matches:
             time_str = all_matches[-1]  # Use the LAST match
             time_match = re.search(time_pattern, time_str, re.IGNORECASE)
+
+    # FALLBACK: Try the captured time_str directly
+    if not time_match and time_str:
+        time_match = re.search(time_pattern, time_str, re.IGNORECASE)
 
     # If we found a time match, reconstruct time_str properly
     if time_match:
@@ -276,11 +277,21 @@ def parse_reset_time(time_str, window_hours=5, section_text=None):
                 # If we parsed "1:59am" but it is currently "11:58pm",
                 # the parsed date (Today 1:59am) is in the past.
                 # "Resets" always implies the future.
-                # If the parsed time is earlier than NOW (minus a small buffer),
-                # add appropriate days: 7 for weekly (168h), 1 for session.
                 if dt < now - timedelta(minutes=15):
-                    days_to_add = 7 if window_hours == 168 else 1
-                    dt += timedelta(days=days_to_add)
+                    if window_hours == 168:
+                        # WEEKLY RESET: Find next occurrence within 7 days
+                        # The reset happens on a specific weekday at this time.
+                        # We need to find the NEXT occurrence, not blindly add 7 days.
+                        # Try each day until we find a future time ≤168h away.
+                        for days in range(1, 8):
+                            candidate = dt + timedelta(days=days)
+                            remaining_hours = (candidate - now).total_seconds() / 3600
+                            if candidate > now and remaining_hours <= 168:
+                                dt = candidate
+                                break
+                    else:
+                        # SESSION RESET: Add 1 day for daily/session windows
+                        dt += timedelta(days=1)
 
                 break
             except ValueError:
@@ -394,7 +405,7 @@ try:
         # Clamp visualization to 100% so bars don't break lines
         bar_pct = min(100, elapsed_pct)
 
-        print(f"  Time:   {create_bar(bar_pct)}  {int(elapsed_pct)}% time")
+        print(f"  Time:   {create_bar(bar_pct)}  {round(elapsed_pct)}% time")
         c = RED if used > elapsed_pct else GREEN
         print(f"  Usage:  {c}{create_bar(used)}{RESET}  {used}% used")
 
