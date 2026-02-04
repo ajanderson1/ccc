@@ -550,7 +550,7 @@ def display_section(
     print(f"  Status: {color}{msg}{RESET} | Resets in {remain_str}")
 
 
-def display_usage(result: ParseResult, duration: float):
+def display_usage(result: ParseResult, duration: float, debug: bool = False):
     """Display full usage analysis."""
     now = datetime.now()
 
@@ -560,13 +560,13 @@ def display_usage(result: ParseResult, duration: float):
     print(f"\n  {DIM}---{RESET}\n")
     display_section("Session Usage (5h)", result.session_percent, result.session_reset_dt, 5)
 
-    # Raw diagnostic info
-    print(f"\n  {DIM}Raw: week='{result.week_reset_str}' session='{result.session_reset_str}'{RESET}")
+    if debug:
+        print(f"\n  {DIM}Raw: week='{result.week_reset_str}' session='{result.session_reset_str}'{RESET}")
     print("")
 
 
 # --- CLI ---
-def run_once(raw: bool, quiet: bool, heal_on_fail: bool) -> int:
+def run_once(raw: bool, quiet: bool, heal_on_fail: bool, debug: bool = False) -> int:
     """Single run with optional healing."""
     start = time.time()
 
@@ -584,7 +584,7 @@ def run_once(raw: bool, quiet: bool, heal_on_fail: bool) -> int:
             raise ValidationError(msg)
 
         if not quiet:
-            display_usage(result, time.time() - start)
+            display_usage(result, time.time() - start, debug=debug)
 
         return 0
 
@@ -622,7 +622,7 @@ def run_once(raw: bool, quiet: bool, heal_on_fail: bool) -> int:
     return exit_code
 
 
-def run_loop(interval: int, quiet: bool):
+def run_loop(interval: int, quiet: bool, debug: bool = False):
     """Run continuously with countdown."""
     import shutil
 
@@ -632,7 +632,7 @@ def run_loop(interval: int, quiet: bool):
             os.system("clear" if os.name == "posix" else "cls")
 
             # Run once
-            run_once(raw=False, quiet=quiet, heal_on_fail=False)
+            run_once(raw=False, quiet=quiet, heal_on_fail=False, debug=debug)
 
             # Countdown
             term_width = shutil.get_terminal_size().columns
@@ -663,6 +663,7 @@ Exit codes:
     parser.add_argument("--raw", action="store_true", help="Output raw captured content")
     parser.add_argument("--quiet", action="store_true", help="Suppress output, exit code only")
     parser.add_argument("--heal", action="store_true", help="Trigger self-healing on failure")
+    parser.add_argument("--debug", action="store_true", help="Show debug info (raw reset strings)")
 
     args = parser.parse_args()
 
@@ -673,9 +674,9 @@ Exit codes:
 
     try:
         if args.loop:
-            run_loop(args.interval, args.quiet)
+            run_loop(args.interval, args.quiet, args.debug)
         else:
-            exit_code = run_once(args.raw, args.quiet, args.heal)
+            exit_code = run_once(args.raw, args.quiet, args.heal, args.debug)
             sys.exit(exit_code)
     finally:
         release_lock()
