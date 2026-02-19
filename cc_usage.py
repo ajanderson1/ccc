@@ -336,8 +336,14 @@ def extract_reset_string(text: str, section: str) -> Optional[str]:
     return None
 
 
-def adjust_to_future(dt: datetime, now: datetime, window_hours: int) -> datetime:
-    """Ensure reset time is in future and within window."""
+def adjust_to_future(
+    dt: datetime, now: datetime, window_hours: int
+) -> Optional[datetime]:
+    """Ensure reset time is in future and within window.
+
+    Returns None if the time is stale (in the past and cannot be
+    adjusted to a valid future time within the window).
+    """
     # If time-only was parsed (year is 1900), combine with today
     if dt.year == 1900:
         dt = datetime.combine(now.date(), dt.time())
@@ -345,8 +351,13 @@ def adjust_to_future(dt: datetime, now: datetime, window_hours: int) -> datetime
     # If in past, adjust forward
     if dt < now - timedelta(minutes=15):
         if window_hours <= 24:
-            # Session: add 1 day
-            dt += timedelta(days=1)
+            # Session: try adding 1 day
+            candidate = dt + timedelta(days=1)
+            hours_away = (candidate - now).total_seconds() / 3600
+            if hours_away <= window_hours + 1:
+                return candidate
+            # Stale data — can't infer a valid future reset
+            return None
         else:
             # Weekly: find next occurrence within 7 days
             for days in range(1, 8):
@@ -355,8 +366,8 @@ def adjust_to_future(dt: datetime, now: datetime, window_hours: int) -> datetime
                     hours_away = (candidate - now).total_seconds() / 3600
                     if hours_away <= window_hours:
                         return candidate
-            # Fallback: just add 7 days
-            dt += timedelta(days=7)
+            # No valid candidate found
+            return None
 
     return dt
 
@@ -376,7 +387,8 @@ def parse_reset_time(
     # Strategy 1: dateutil with fuzzy parsing
     if DATEUTIL_AVAILABLE:
         try:
-            dt = dateutil_parser.parse(clean, fuzzy=True)
+            default_date = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            dt = dateutil_parser.parse(clean, fuzzy=True, default=default_date)
             return adjust_to_future(dt, now, window_hours)
         except (ValueError, ParserError):
             pass

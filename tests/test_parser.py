@@ -142,15 +142,25 @@ class TestParseResetTime:
         assert result.hour == 18
         assert result.minute == 59
 
-    def test_adjusts_past_time_to_tomorrow(self):
+    def test_stale_session_time_returns_none(self):
         now = datetime(2026, 1, 28, 20, 0)  # 8pm on Jan 28
+        # 6:59pm is over an hour in the past — adding a day would put it
+        # ~23h away, far beyond the 5h session window.  Correct behaviour
+        # is to return None (stale data).
         result = parse_reset_time("6:59pm", window_hours=5, now=now)
+        assert result is None
 
+    def test_adjusts_past_time_within_window(self):
+        # Time just barely in the past — adding 1 day keeps it within
+        # the session window (window_hours + 1h buffer = 6h, and the
+        # adjusted time is ~23.7h away — only valid for larger windows).
+        # For a 24h window, adding 1 day should work.
+        now = datetime(2026, 1, 28, 20, 0)  # 8pm
+        result = parse_reset_time("6:59pm", window_hours=24, now=now)
         assert result is not None
-        # Should be in the future since 6:59pm is in the past
         assert result > now
+        assert result.day == 29
         assert result.hour == 18
-        assert result.minute == 59
 
     def test_returns_none_for_garbage(self):
         result = parse_reset_time("not a time", window_hours=5)
